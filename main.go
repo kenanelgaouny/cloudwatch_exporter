@@ -6,11 +6,12 @@ import (
 	"log"
 	"net/http"
 
+	"os"
+	"sync"
+
 	"github.com/Technofy/cloudwatch_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"os"
-	"sync"
 )
 
 var (
@@ -22,9 +23,15 @@ var (
 	globalRegistry *prometheus.Registry
 	settings       *config.Settings
 	totalRequests  prometheus.Counter
+	totalErrors    prometheus.Counter
+	scrapeDurationHistogramVec    prometheus.HistogramVec
 	configMutex    = &sync.Mutex{}
-)
-
+	observers      = map[string]prometheus.ObserverVec{"scrapeDurationHistogram": prometheus.NewHistogramVec(prometheus.HistogramOpts{
+					Name: "cloudwatch_exporter_scrape_duration_seconds_buckets",
+					Help: "Time this CloudWatch scrape took, in seconds and shown in buckets",
+					Buckets: []float64{.25, .5, 1., 2., 5., 8., 16., 30., },}, []string{}),}
+	)
+	
 func loadConfigFile() error {
 	var err error
 	var tmpSettings *config.Settings
@@ -84,8 +91,9 @@ func handleTarget(w http.ResponseWriter, req *http.Request) {
 		DisableCompression: false,
 	})
 
+	iHandler := promhttp.InstrumentHandlerDuration(observers["scrapeDurationHistogram"],handler)
 	// Serve the answer through the Collect method of the Collector
-	handler.ServeHTTP(w, req)
+	iHandler.ServeHTTP(w, req)
 	configMutex.Unlock()
 }
 
@@ -99,7 +107,14 @@ func main() {
 		Help: "API requests made to CloudWatch",
 	})
 
+	totalErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cloudwatch_errors_total",
+		Help: "Failed API requests made to CloudWatch",
+	})
+
 	globalRegistry.MustRegister(totalRequests)
+	globalRegistry.MustRegister(totalErrors)
+	globalRegistry.MustRegister(observers["scrapeDurationHistogram"])
 
 	prometheus.DefaultGatherer = globalRegistry
 

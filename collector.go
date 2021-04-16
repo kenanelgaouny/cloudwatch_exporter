@@ -31,6 +31,7 @@ type cwCollector struct {
 	ScrapeTime        prometheus.Gauge
 	ErroneousRequests prometheus.Counter
 	Template          *cwCollectorTemplate
+	SuccessfulRequests prometheus.Counter
 }
 
 // generateTemplates creates pre-generated metrics descriptions so that only the metrics are created from them during a scrape.
@@ -114,6 +115,10 @@ func NewCwCollector(target string, taskName string, region string) (*cwCollector
 			Name: "cloudwatch_exporter_erroneous_requests",
 			Help: "The number of erroneous request made by this scrape.",
 		}),
+		SuccessfulRequests: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cloudwatch_exporter_successful_requests",
+			Help: "The number of successful request made by this scrape.",
+		}),
 		Template: templates[taskName],
 	}, nil
 }
@@ -125,11 +130,13 @@ func (c *cwCollector) Collect(ch chan<- prometheus.Metric) {
 
 	ch <- c.ScrapeTime
 	ch <- c.ErroneousRequests
+	ch <- c.SuccessfulRequests
 }
 
 func (c *cwCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ScrapeTime.Desc()
 	ch <- c.ErroneousRequests.Desc()
+	ch <- c.SuccessfulRequests.Desc()
 
 	for m := range c.Template.Metrics {
 		ch <- c.Template.Metrics[m].Desc

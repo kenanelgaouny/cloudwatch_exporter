@@ -118,20 +118,30 @@ func scrape(collector *cwCollector, ch chan<- prometheus.Metric) {
 		totalRequests.Inc()
 
 		if err != nil {
+			totalErrors.Inc()
+			collector.ErroneousRequests.Inc()
 			fmt.Println(err)
 			continue
 		}
+		collector.SuccessfulRequests.Inc()
 
 		for nextToken!=nil {
 			result, err := svc.ListMetrics(&cloudwatch.ListMetricsInput{
 				MetricName: aws.String(metric.ConfMetric.Name),
 				Namespace:  aws.String(metric.ConfMetric.Namespace),
 				NextToken: nextToken,
-			})		
+			})	
+
+			totalRequests.Inc()
+	
 			if err != nil {
+				totalErrors.Inc()
+				collector.ErroneousRequests.Inc()
 				fmt.Println(err)
 				continue
 			}
+			collector.SuccessfulRequests.Inc()
+
 			nextToken=result.NextToken
 			metrics=append(metrics,result.Metrics...)
 		}
@@ -185,12 +195,13 @@ func scrape(collector *cwCollector, ch chan<- prometheus.Metric) {
 func scrapeSingleDataPoint(collector *cwCollector, ch chan<- prometheus.Metric,params *cloudwatch.GetMetricStatisticsInput,metric *cwMetric,labels []string,svc *cloudwatch.CloudWatch) error {
 	resp, err := svc.GetMetricStatistics(params)
 	totalRequests.Inc()
-
 	if err != nil {
+		totalErrors.Inc()
 		collector.ErroneousRequests.Inc()
 		fmt.Println(err)
 		return err
 	}
+	collector.SuccessfulRequests.Inc()
 
 	// There's nothing in there, don't publish the metric
 	if len(resp.Datapoints) == 0 {
