@@ -155,6 +155,9 @@ func scrape(collector *cwCollector, ch chan<- prometheus.Metric) {
 			for _,dim := range met.Dimensions {
 				dimRegex:=metric.ConfMetric.DimensionsSelectRegex[*dim.Name]
 				if(dimRegex==""){
+					if (len(metric.ConfMetric.DimensionsSelect[*dim.Name]) == 0){
+						continue
+					}
 					dimRegex="\\b"+strings.Join(metric.ConfMetric.DimensionsSelect[*dim.Name],"\\b|\\b")+"\\b"
 				}
 
