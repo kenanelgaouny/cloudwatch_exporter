@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"time"
 	"os"
 	"sync"
 
@@ -21,6 +22,7 @@ var (
 	metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose exporter's metrics.")
 	scrapePath    = flag.String("web.telemetry-scrape-path", "/scrape", "Path under which to expose CloudWatch metrics.")
 	configFile    = flag.String("config.file", "config.yml", "Path to configuration file.")
+	cacheEnabled  = flag.Bool("cache.enabled", false, "Enable caching for the scrape endpoint")
 
 	globalRegistry *prometheus.Registry
 	settings       *config.Settings
@@ -33,7 +35,7 @@ var (
 					Help: "Time this CloudWatch scrape took, in seconds and shown in buckets",
 					Buckets: []float64{.25, .5, 1., 2., 5., 8., 16., 30., },}, []string{}),}
 	)
-	
+
 func loadConfigFile() error {
 	var err error
 	var tmpSettings *config.Settings
@@ -125,22 +127,24 @@ func main() {
 		fmt.Printf("Can't read configuration file: %s\n", err.Error())
 		os.Exit(-1)
 	}
-
-	memcached, err := memory.NewAdapter(
-		memory.AdapterWithAlgorithm(memory.LRU),
-		memory.AdapterWithCapacity(100),
-	)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	cacheClient, err := cache.NewClient(
-		cache.ClientWithAdapter(memcached),
-		cache.ClientWithTTL(1*time.Minute),
-	)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	var cacheClient *cache.Client
+	if *cacheEnabled {
+		memcached, err := memory.NewAdapter(
+			memory.AdapterWithAlgorithm(memory.LRU),
+			memory.AdapterWithCapacity(100),
+		)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		cacheClient, err = cache.NewClient(
+			cache.ClientWithAdapter(memcached),
+			cache.ClientWithTTL(1*time.Minute),
+		)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	}
 	fmt.Println("CloudWatch exporter started...")
 
@@ -149,7 +153,11 @@ func main() {
 
 	// Expose CloudWatch through this endpoint
 	scrapeHandler := http.HandlerFunc(handleTarget)
-	http.Handle(*scrapePath, cacheClient.Middleware(scrapeHandler))
+	if *cacheEnabled{
+		http.Handle(*scrapePath, cacheClient.Middleware(scrapeHandler))
+	}else {
+		http.Handle(*scrapePath, scrapeHandler)
+	}
 
 	// Allows manual reload of the configuration
 	http.HandleFunc("/reload", handleReload)
