@@ -12,6 +12,8 @@ import (
 	"github.com/Technofy/cloudwatch_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	cache "github.com/victorspringer/http-cache"
+	"github.com/victorspringer/http-cache/adapter/memory"
 )
 
 var (
@@ -124,13 +126,30 @@ func main() {
 		os.Exit(-1)
 	}
 
+	memcached, err := memory.NewAdapter(
+		memory.AdapterWithAlgorithm(memory.LRU),
+		memory.AdapterWithCapacity(100),
+	)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	cacheClient, err := cache.NewClient(
+		cache.ClientWithAdapter(memcached),
+		cache.ClientWithTTL(1*time.Minute),
+	)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 	fmt.Println("CloudWatch exporter started...")
 
 	// Expose the exporter's own metrics on /metrics
 	http.Handle(*metricsPath, promhttp.Handler())
 
 	// Expose CloudWatch through this endpoint
-	http.HandleFunc(*scrapePath, handleTarget)
+	scrapeHandler := http.HandlerFunc(handleTarget)
+	http.Handle(*scrapePath, cacheClient.Middleware(scrapeHandler))
 
 	// Allows manual reload of the configuration
 	http.HandleFunc("/reload", handleReload)
