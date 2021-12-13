@@ -28,9 +28,9 @@ func Test_Caching(t *testing.T) {
 	// Responses here should come from cache
     cumalitiveRequestTime := time.Duration(0)
     for i := 0; i < 10; i++ {
-    	start = time.Now()
-	    res, err = http.Get("http://localhost:9042/scrape?task=billing")
-	    cachedDuration := time.Since(start)
+        start = time.Now()
+        res, err = http.Get("http://localhost:9042/scrape?task=billing")
+        cachedDuration := time.Since(start)
         assert.Equal(http.StatusOK, res.StatusCode, "Request status not OK")
         assert.Nil(err, "No errors should be thrown")
         cumalitiveRequestTime = cumalitiveRequestTime + cachedDuration
